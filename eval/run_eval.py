@@ -73,6 +73,11 @@ def run_case(agent, case: dict) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="个人AI助理Agent 评测")
     parser.add_argument("--no-clean", action="store_true", help="评测前不清空数据表")
+    parser.add_argument(
+        "--real", action="store_true",
+        help="真实模型模式：回答断言放宽为“非空”（Mock 用 answer_contains 精确断言），"
+             "同时输出关键信息参考命中率",
+    )
     args = parser.parse_args()
 
     if not args.no_clean:
@@ -85,6 +90,13 @@ def main() -> None:
     results: list[dict] = []
     for case in cases:
         r = run_case(agent, case)
+        if args.real:
+            # 真实模型：回答只需非空；另统计关键信息参考命中（任一关键词）
+            r["ok_answer"] = bool(r["answer"] and r["answer"].strip())
+            expect = case.get("answer_contains", [])
+            r["info_hit"] = any(kw in r["answer"] for kw in expect) if expect else True
+        else:
+            r["info_hit"] = r["ok_answer"]
         passed = r["ok_tool"] and r["ok_params"] and r["ok_answer"]
         results.append(
             {
@@ -95,6 +107,7 @@ def main() -> None:
                 "ok_tool": r["ok_tool"],
                 "ok_params": r["ok_params"],
                 "ok_answer": r["ok_answer"],
+                "info_hit": r["info_hit"],
                 "passed": passed,
                 "answer": r["answer"],
             }
@@ -104,24 +117,27 @@ def main() -> None:
     tool_acc = sum(1 for r in results if r["ok_tool"]) / n
     param_acc = sum(1 for r in results if r["ok_params"]) / n
     answer_acc = sum(1 for r in results if r["ok_answer"]) / n
+    info_acc = sum(1 for r in results if r["info_hit"]) / n
     overall = sum(1 for r in results if r["passed"]) / n
 
+    mode = "真实模型" if args.real else "Mock 基线"
     os.makedirs(_OUTPUT_DIR, exist_ok=True)
     lines = [
-        "# 评测报告（Mock 基线）",
+        f"# 评测报告（{mode}）",
         "",
         "## 总指标",
         "",
         f"- 用例总数：{n}",
         f"- 工具调用准确率：{tool_acc:.1%}",
         f"- 参数准确率：{param_acc:.1%}",
-        f"- 回答命中率：{answer_acc:.1%}",
+        f"- 回答可用率（真实模式=非空）：{answer_acc:.1%}",
+        f"- 关键信息参考命中率：{info_acc:.1%}",
         f"- **综合通过率：{overall:.1%}**",
         "",
         "## 逐条结果",
         "",
-        "| 用例 | 输入 | 期望工具 | 实际工具 | 工具✓ | 回答（截断） | 结果 |",
-        "|---|---|---|---|---|---|---|",
+        "| 用例 | 输入 | 期望工具 | 实际工具 | 工具✓ | 关键信息 | 回答（截断） | 结果 |",
+        "|---|---|---|---|---|---|---|---|",
     ]
     for r in results:
         tools_str = ",".join(r["tools"]) or "（无）"
@@ -129,10 +145,12 @@ def main() -> None:
         status = "✅" if r["passed"] else "❌"
         lines.append(
             f"| {r['id']} | {r['input']} | {r['expected_tool'] or '（无）'} "
-            f"| {tools_str} | {'✓' if r['ok_tool'] else '✗'} | {answer_short} | {status} |"
+            f"| {tools_str} | {'✓' if r['ok_tool'] else '✗'} "
+            f"| {'✓' if r['info_hit'] else '✗'} | {answer_short} | {status} |"
         )
 
-    report_path = os.path.join(_OUTPUT_DIR, "report.md")
+    report_name = "report-real.md" if args.real else "report.md"
+    report_path = os.path.join(_OUTPUT_DIR, report_name)
     with open(report_path, "w", encoding="utf-8") as f:
         f.write("\n".join(lines))
 

@@ -10,8 +10,9 @@
 - **手写 Agent 内核**：ReAct 推理循环 + 原生 Function Calling 工具调度，无 LangChain/LangGraph 依赖
 - **热插拔工具机制**：`@tool` 装饰器 + 注册表，新增工具零侵入内核（当前 11 个工具）
 - **双记忆系统**：会话记忆（滑动窗口）+ 长期记忆（跨会话持久化，自研 bigram TF + 余弦相似度检索）
-- **双运行模式**：真实模型（Codex/GPT/DeepSeek/通义，OpenAI 兼容接口可切换）/ Mock 模式（离线可跑）
-- **评测体系**：40 条测试集，工具调用 / 参数 / 回答三指标，综合通过率 **100%**
+- **双运行模式**：真实模型（gpt-6-sol via 中转站，OpenAI 兼容）/ Mock 模式（离线可跑，一键切换）
+- **评测体系**：40 条测试集，工具调用 / 参数 / 回答三指标；Mock 基线 **100%**，真实模型 **95%**
+  （工具调用准确率经提示词工程优化 92.5% → **100%**）
 - **可视化 Demo**：Gradio Web 界面，多轮对话 + 工具调用过程实时展示
 
 ## 技术栈
@@ -60,9 +61,9 @@ python -m venv .venv
 .\.venv\Scripts\python.exe eval\run_eval.py
 ```
 
-**接入真实模型（Codex 等）**：复制 `config/config.yaml` 为 `config/secret.yaml`，填好
-`base_url / api_key / model` 并将 `provider` 改为 `openai`（secret.yaml 优先覆盖且不入库）。
-不配置则默认 Mock 模式，完全离线可运行。
+**接入真实模型**：项目当前已通过 `config/secret.yaml` 接入中转站真实模型
+（base_url / api_key / model 见该文件，不入库）。切换模型只需改 `model` 字段；
+删除 secret.yaml 或把 `provider` 改回 `mock` 即回到离线 Mock 模式。
 
 ## 试试这些
 
@@ -100,5 +101,5 @@ python -m venv .venv
 - [x] P2 Agent 内核实现（5 项链路测试）
 - [x] P3 工具与记忆系统（11 工具，12 项测试）
 - [x] P4 对话界面与演示（Gradio + 轨迹可视化）
-- [x] P5 评测与迭代（40 条用例，综合通过率 100%）
+- [x] P5 评测与迭代（40 条用例：Mock 100% / 真实模型 95%，工具调用经提示词优化至 100%）
 - [x] P6 文档与求职呈现

@@ -20,6 +20,16 @@ from agent.tools import ToolRegistry
 
 _CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config"))
 
+# 系统提示词：引导工具使用策略（面试可讲：通过提示词优化评测指标）
+_SYSTEM_PROMPT = (
+    "你是“个人AI助理”，一个可靠的智能体助手。\n"
+    "使用原则：\n"
+    "1. 当用户的问题能通过可用工具获得更准确的信息（时间、计算、天气、"
+    "待办、笔记、知识库检索、长期记忆）时，务必先调用对应工具，再基于工具结果回答。\n"
+    "2. 问候与闲聊直接回答，不要调用工具。\n"
+    "3. 回答使用简体中文，简洁自然，必要时使用列表。"
+)
+
 
 def load_config() -> dict:
     config_path = os.path.join(_CONFIG_DIR, "config.yaml")
@@ -65,4 +75,5 @@ def build_agent() -> Agent:
         llm=llm,
         registry=registry,
         max_iterations=int(llm_cfg.get("max_iterations", 5)),
+        system_prompt=_SYSTEM_PROMPT,
     )

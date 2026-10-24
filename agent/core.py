@@ -23,11 +23,13 @@ class Agent:
         registry: ToolRegistry,
         memory: ConversationMemory | None = None,
         max_iterations: int = 5,
+        system_prompt: str | None = None,
     ):
         self._llm = llm
         self._registry = registry
         self._memory = memory or ConversationMemory()
         self._max_iterations = max_iterations
+        self._system_prompt = system_prompt
 
     @property
     def memory(self) -> ConversationMemory:
@@ -47,6 +49,8 @@ class Agent:
         }
         """
         messages = self._memory.messages + [{"role": "user", "content": user_input}]
+        if self._system_prompt:
+            messages = [{"role": "system", "content": self._system_prompt}] + messages
         trace: list[dict] = []
 
         for step in range(self._max_iterations):
