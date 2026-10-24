@@ -98,26 +98,33 @@ class MockLLM:
             return LLMResponse(content=f"[Mock] 工具已执行，结果为：{content}")
 
         # 规则2：取最近一条用户消息，按 keywords 匹配工具
+        # 策略：最长关键词优先（更具体的表达优先），平局按注册顺序
         user_text = ""
         for m in reversed(messages):
             if m.get("role") == "user":
                 user_text = str(m.get("content", ""))
                 break
 
+        best: tuple[int, Tool] | None = None  # (关键词长度, 工具)
         for tool in self._registry.all:
             for kw in tool.keywords:
                 if kw and kw in user_text:
-                    # Mock 模式参数补给：固定参数 > 从输入提取 > 空参数
-                    if tool.mock_args is not None:
-                        arguments = dict(tool.mock_args)
-                    elif tool.mock_args_fn is not None:
-                        arguments = tool.mock_args_fn(user_text) or {}
-                    else:
-                        arguments = {}
-                    return LLMResponse(
-                        content=None,
-                        tool_calls=[ToolCall(id="mock-call-1", name=tool.name, arguments=arguments)],
-                    )
+                    if best is None or len(kw) > best[0]:
+                        best = (len(kw), tool)
+
+        if best is not None:
+            _, tool = best
+            # Mock 模式参数补给：固定参数 > 从输入提取 > 空参数
+            if tool.mock_args is not None:
+                arguments = dict(tool.mock_args)
+            elif tool.mock_args_fn is not None:
+                arguments = tool.mock_args_fn(user_text) or {}
+            else:
+                arguments = {}
+            return LLMResponse(
+                content=None,
+                tool_calls=[ToolCall(id="mock-call-1", name=tool.name, arguments=arguments)],
+            )
 
         # 规则3：无匹配 → 直接回复
         return LLMResponse(content=f"[Mock] 收到：{user_text or '（空）'}")
