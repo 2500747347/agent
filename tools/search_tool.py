@@ -35,10 +35,14 @@ def _extract_kw(text: str) -> dict:
 )
 def search_knowledge(keyword: str) -> str:
     """keyword: 主题关键词，如 python / git / agent / rag / react / transformer"""
-    kw = keyword.lower()
+    # 分词匹配：从关键词中提取有意义的词元，任一命中即返回
+    tokens = [
+        t for t in re.findall(r"[a-z0-9\u4e00-\u9fa5]{2,}", keyword.lower())
+        if t not in {"什么是", "怎么样", "用法", "一下", "介绍", "关于", "内容", "知识"}
+    ]
     hits = [
         doc for doc in _KB
-        if kw in doc["title"].lower() or kw in doc["content"].lower()
+        if any(tok in doc["title"].lower() or tok in doc["content"].lower() for tok in tokens)
     ]
     if not hits:
         return f"知识库中没有找到与“{keyword}”相关的内容。可尝试：python / git / agent / rag / react / transformer。"

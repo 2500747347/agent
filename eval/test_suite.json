@@ -1,0 +1,49 @@
+[
+  {"id": "time-01", "input": "今天是几号？", "expected_tool": "get_current_time", "expected_arguments": {}, "answer_contains": ["年", "月"]},
+  {"id": "time-02", "input": "现在几点？", "expected_tool": "get_current_time", "expected_arguments": {}, "answer_contains": [":"]},
+  {"id": "time-03", "input": "今天星期几？", "expected_tool": "get_current_time", "expected_arguments": {}, "answer_contains": ["星期"]},
+  {"id": "time-04", "input": "告诉我今天的日期", "expected_tool": "get_current_time", "expected_arguments": {}, "answer_contains": ["年", "月"]},
+  {"id": "time-05", "input": "现在是什么时间", "expected_tool": "get_current_time", "expected_arguments": {}, "answer_contains": ["月"]},
+  {"id": "time-06", "input": "今天几号了", "expected_tool": "get_current_time", "expected_arguments": {}, "answer_contains": ["年"]},
+
+  {"id": "calc-01", "input": "计算 128 * 37", "expected_tool": "calculate", "expected_arguments": {"expression": "128 * 37"}, "answer_contains": ["4736"]},
+  {"id": "calc-02", "input": "128 + 256 等于多少", "expected_tool": "calculate", "expected_arguments": {"expression": "128 + 256"}, "answer_contains": ["384"]},
+  {"id": "calc-03", "input": "帮我算 3.5 * 2", "expected_tool": "calculate", "expected_arguments": {"expression": "3.5 * 2"}, "answer_contains": ["7"]},
+  {"id": "calc-04", "input": "100 / 4 等于几", "expected_tool": "calculate", "expected_arguments": {"expression": "100 / 4"}, "answer_contains": ["25"]},
+  {"id": "calc-05", "input": "2 ** 10 是多少", "expected_tool": "calculate", "expected_arguments": {"expression": "2 ** 10"}, "answer_contains": ["1024"]},
+  {"id": "calc-06", "input": "(3 + 5) * 2 等于多少", "expected_tool": "calculate", "expected_arguments": {"expression": "(3 + 5) * 2"}, "answer_contains": ["16"]},
+  {"id": "calc-07", "input": "10 % 3 等于多少", "expected_tool": "calculate", "expected_arguments": {"expression": "10 % 3"}, "answer_contains": ["1"]},
+  {"id": "calc-08", "input": "6.5 + 2.5 等于多少", "expected_tool": "calculate", "expected_arguments": {"expression": "6.5 + 2.5"}, "answer_contains": ["9"]},
+
+  {"id": "weather-01", "input": "芜湖今天天气怎么样", "expected_tool": "get_weather", "expected_arguments": {"city": "芜湖"}, "answer_contains": ["芜湖", "℃"]},
+  {"id": "weather-02", "input": "合肥气温多少", "expected_tool": "get_weather", "expected_arguments": {"city": "合肥"}, "answer_contains": ["合肥", "℃"]},
+  {"id": "weather-03", "input": "南京明天天气如何", "expected_tool": "get_weather", "expected_arguments": {"city": "南京"}, "answer_contains": ["南京", "℃"]},
+  {"id": "weather-04", "input": "北京多少度", "expected_tool": "get_weather", "expected_arguments": {"city": "北京"}, "answer_contains": ["北京", "℃"]},
+
+  {"id": "todo-01", "input": "帮我记一下明天上午10点开周会", "expected_tool": "add_todo", "expected_arguments": {}, "answer_contains": ["已新增待办"]},
+  {"id": "todo-02", "input": "帮我记一下周三下午健身", "expected_tool": "add_todo", "expected_arguments": {}, "answer_contains": ["已新增待办"]},
+  {"id": "todo-03", "input": "查看我的待办", "expected_tool": "list_todos", "expected_arguments": {}, "answer_contains": ["待办"]},
+  {"id": "todo-04", "input": "把待办 1 完成", "expected_tool": "complete_todo", "expected_arguments": {"todo_id": 1}, "answer_contains": ["已标记为完成"]},
+  {"id": "todo-05", "input": "把待办 2 搞定", "expected_tool": "complete_todo", "expected_arguments": {"todo_id": 2}, "answer_contains": ["已标记为完成"]},
+  {"id": "todo-06", "input": "我有哪些待办", "expected_tool": "list_todos", "expected_arguments": {}, "answer_contains": ["待办"]},
+
+  {"id": "note-01", "input": "帮我记个笔记：健身计划每周三次", "expected_tool": "add_note", "expected_arguments": {}, "answer_contains": ["已保存笔记"]},
+  {"id": "note-02", "input": "记一条备忘：买牛奶", "expected_tool": "add_note", "expected_arguments": {}, "answer_contains": ["已保存笔记"]},
+  {"id": "note-03", "input": "查一下笔记里的健身计划", "expected_tool": "search_notes", "expected_arguments": {}, "answer_contains": ["健身计划"]},
+  {"id": "note-04", "input": "找一下天气的笔记", "expected_tool": "search_notes", "expected_arguments": {}, "answer_contains": ["天气"]},
+
+  {"id": "search-01", "input": "什么是 RAG", "expected_tool": "search_knowledge", "expected_arguments": {}, "answer_contains": ["RAG"]},
+  {"id": "search-02", "input": "查一下 git 的用法", "expected_tool": "search_knowledge", "expected_arguments": {}, "answer_contains": ["Git"]},
+  {"id": "search-03", "input": "介绍一下 python 3.13", "expected_tool": "search_knowledge", "expected_arguments": {}, "answer_contains": ["Python"]},
+  {"id": "search-04", "input": "讲讲 agent 的原理", "expected_tool": "search_knowledge", "expected_arguments": {}, "answer_contains": ["Agent"]},
+  {"id": "search-05", "input": "什么是 transformer", "expected_tool": "search_knowledge", "expected_arguments": {}, "answer_contains": ["Transformer"]},
+
+  {"id": "mem-01", "input": "记住我正在准备面试", "expected_tool": "remember", "expected_arguments": {}, "answer_contains": ["已记住"]},
+  {"id": "mem-02", "input": "记住我最喜欢的城市是南京", "expected_tool": "remember", "expected_arguments": {}, "answer_contains": ["已记住"]},
+  {"id": "mem-03", "input": "我之前说过什么", "expected_tool": "recall_memory", "expected_arguments": {}, "answer_contains": ["我记得"]},
+  {"id": "mem-04", "input": "我上次说了什么", "expected_tool": "recall_memory", "expected_arguments": {}, "answer_contains": ["我记得"]},
+
+  {"id": "idle-01", "input": "你好", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
+  {"id": "idle-02", "input": "今天心情不错", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
+  {"id": "idle-03", "input": "你叫什么名字", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]}
+]

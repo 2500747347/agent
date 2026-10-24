@@ -31,7 +31,7 @@ def _extract_city(text: str) -> dict:
 @tool(
     "get_weather",
     "查询指定城市今日天气（含天气状况、气温、风力）",
-    keywords=["天气", "气温", "下雨", "多少度", "温度"],
+    keywords=["天气", "气温", "下雨", "多少度", "温度", "气温多少"],
     mock_args_fn=_extract_city,
 )
 def get_weather(city: str) -> str:

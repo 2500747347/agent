@@ -29,7 +29,7 @@ def _extract_todo_id(text: str) -> dict:
 @tool(
     "add_todo",
     "新增一条待办事项。content 必填；due 可填截止时间描述（如 明天上午10点）。",
-    keywords=["待办", "记一下", "提醒我", "记得", "别忘了"],
+    keywords=["记一下", "提醒我", "别忘了", "添加待办", "新增待办"],
     mock_args_fn=_extract_add_todo,
 )
 def add_todo(content: str, due: str = "") -> str:
@@ -48,7 +48,7 @@ def add_todo(content: str, due: str = "") -> str:
 @tool(
     "list_todos",
     "列出当前所有未完成的待办事项",
-    keywords=["待办列表", "有什么待办", "查待办", "待办有哪些", "我的待办"],
+    keywords=["待办", "待办列表", "有什么待办", "待办有哪些", "我的待办"],
 )
 def list_todos() -> str:
     conn = get_connection()
@@ -69,7 +69,7 @@ def list_todos() -> str:
 @tool(
     "complete_todo",
     "把指定编号的待办事项标记为已完成",
-    keywords=["完成了", "搞定", "标记完成", "做完", "办完"],
+    keywords=["完成", "搞定", "做完", "办完"],
     mock_args_fn=_extract_todo_id,
 )
 def complete_todo(todo_id: int) -> str:

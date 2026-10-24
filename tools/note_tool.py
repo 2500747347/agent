@@ -11,15 +11,19 @@ init_db()
 
 def _extract_note(text: str) -> dict:
     cleaned = re.sub(r"帮我|记个|记一下|笔记|备忘|写进|一条", "", text)
-    cleaned = re.sub(r"[?？!！。，,]+$", "", cleaned).strip()
+    cleaned = re.sub(r"^[：:\s]+|[?？!！。，,:：\s]+$", "", cleaned).strip()
     if not cleaned:
         return {}
     return {"content": cleaned}
 
 
 def _extract_keyword(text: str) -> dict:
-    cleaned = re.sub(r"找|查|笔记|内容|里|有|什么|关于", "", text)
-    cleaned = re.sub(r"[?？!！。，,\s]+$", "", cleaned).strip()
+    # 优先提取“笔记里/笔记中的X”模式
+    m = re.search(r"笔记[里中有的]*([\u4e00-\u9fa5a-z0-9]{2,})", text)
+    if m:
+        return {"keyword": m.group(1)}
+    cleaned = re.sub(r"找|查|笔记|里|有|什么|关于|一下|的", "", text)
+    cleaned = re.sub(r"[?？!！。，,:\s]+$", "", cleaned).strip()
     if not cleaned:
         return {}
     return {"keyword": cleaned}
@@ -28,7 +32,7 @@ def _extract_keyword(text: str) -> dict:
 @tool(
     "add_note",
     "新增一条笔记，content 为笔记内容",
-    keywords=["记笔记", "写笔记", "备忘", "记一条"],
+    keywords=["记笔记", "写笔记", "备忘", "记一条", "笔记"],
     mock_args_fn=_extract_note,
 )
 def add_note(content: str) -> str:
@@ -45,7 +49,7 @@ def add_note(content: str) -> str:
 @tool(
     "search_notes",
     "按关键词检索已保存的笔记，返回匹配的笔记内容",
-    keywords=["找笔记", "查笔记", "笔记里有", "翻翻笔记"],
+    keywords=["找笔记", "查笔记", "笔记里有", "翻翻笔记", "查一下笔记", "找一下笔记", "的笔记"],
     mock_args_fn=_extract_keyword,
 )
 def search_notes(keyword: str) -> str:

@@ -46,7 +46,7 @@ def _extract_expr(text: str) -> dict:
 @tool(
     "calculate",
     "计算数学表达式并返回结果，支持 + - * / ** // % 与括号",
-    keywords=["计算", "等于", "多少", "乘以", "除以", "平方"],
+    keywords=["计算", "等于", "多少", "乘以", "除以", "平方", "帮我算", "算一下"],
     mock_args_fn=_extract_expr,
 )
 def calculate(expression: str) -> str:
