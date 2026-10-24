@@ -1,0 +1,13 @@
+# ===== LLM 配置 =====
+# 使用方式：
+#   1) 想离线跑通：保持 provider=mock（无需任何 Key，可完全离线运行）
+#   2) 接入真实模型：复制本文件为 config/secret.yaml，
+#      在 secret.yaml 中填写 base_url / api_key / model，
+#      并把 provider 改为 openai（secret.yaml 优先覆盖，且不入库）
+llm:
+  provider: mock        # mock | openai
+  base_url: ""          # 例如 https://api.openai.com/v1（或你的兼容网关）
+  api_key: ""           # 你的 API Key（建议只写在 secret.yaml）
+  model: "gpt-5-codex"  # 实际模型名，如 gpt-5-codex / deepseek-chat / qwen-plus
+  temperature: 0.3
+  max_iterations: 5     # ReAct 循环轮次上限（防死循环）
