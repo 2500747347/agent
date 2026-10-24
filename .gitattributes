@@ -1,0 +1,7 @@
+# 统一换行符：入库一律 LF（检出时 Windows 自动转 CRLF）
+* text=auto
+*.py  text eol=lf
+*.md  text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.txt text eol=lf
