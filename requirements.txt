@@ -1,0 +1,12 @@
+# ===== 个人AI助理Agent 依赖清单 =====
+# 核心：LLM 接入（OpenAI 兼容接口，可接 Codex / GPT / DeepSeek / 通义等）
+openai>=1.40.0
+# 配置管理
+PyYAML>=6.0
+# 对话界面
+gradio>=4.44
+# 网络工具（天气/搜索等）
+requests>=2.31
+# 数据处理与评测
+pandas>=2.2
+numpy>=1.26
