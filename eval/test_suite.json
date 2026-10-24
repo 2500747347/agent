@@ -45,5 +45,7 @@
 
   {"id": "idle-01", "input": "你好", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
   {"id": "idle-02", "input": "今天心情不错", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
-  {"id": "idle-03", "input": "你叫什么名字", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]}
+  {"id": "idle-03", "input": "你叫什么名字", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
+  
+  {"id": "dice-01", "input": "掷一个20面的骰子", "expected_tool": "roll_dice", "expected_arguments": {"faces": 20}, "answer_contains": ["骰子点数"]}
 ]
