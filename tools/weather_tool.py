@@ -25,7 +25,8 @@ def _extract_city(text: str) -> dict:
             return {"city": city}
     cleaned = re.sub(r"天气|气温|怎么样|如何|多少|查一下|帮我|预报|今天", "", text)
     cleaned = re.sub(r"[?？!！。，,\s]+$", "", cleaned).strip()
-    return {"city": cleaned[:8]} if cleaned else {}
+    # 提取不到城市时回退默认城市，避免空参调用
+    return {"city": cleaned[:8]} if cleaned else {"city": "芜湖"}
 
 
 @tool(

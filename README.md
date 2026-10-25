@@ -8,10 +8,11 @@
 ## 特性一览
 
 - **手写 Agent 内核**：ReAct 推理循环 + 原生 Function Calling 工具调度，无 LangChain/LangGraph 依赖
-- **热插拔工具机制**：`@tool` 装饰器 + 注册表，新增工具零侵入内核（当前 11 个工具）
+- **热插拔工具机制**：`@tool` 装饰器 + 注册表，新增工具零侵入内核（当前 13 个工具）
 - **双记忆系统**：会话记忆（滑动窗口）+ 长期记忆（跨会话持久化，自研 bigram TF + 余弦相似度检索）
+- **自研 RAG**：本地文档摄入（白名单过滤 + docx/pdf/源码多格式解析）→ 段落切块（重叠窗口）→ TF-IDF 向量化 → 余弦检索 top-k → 回答带出处；接口隔离，可平滑升级 Embedding+FAISS
 - **双运行模式**：真实模型（gpt-6-sol via 中转站，OpenAI 兼容）/ Mock 模式（离线可跑，一键切换）
-- **评测体系**：40 条测试集，工具调用 / 参数 / 回答三指标；Mock 基线 **100%**，真实模型 **95%**
+- **评测体系**：45 条测试集，工具调用 / 参数 / 回答三指标；Mock 基线 **100%**，真实模型 **95%**
   （工具调用准确率经提示词工程优化 92.5% → **100%**）
 - **可视化 Demo**：Gradio Web 界面，多轮对话 + 工具调用过程实时展示
 
@@ -22,7 +23,7 @@
 | 语言 | Python 3.13 |
 | LLM | OpenAI 兼容接口（openai SDK v3.x），内置规则式 MockLLM |
 | 存储 | SQLite（标准库，零依赖） |
-| 检索 | 自实现 bigram 词频向量 + 余弦相似度（numpy） |
+| 检索 | 自实现 bigram TF-IDF 向量 + 余弦相似度（文档级 RAG，接口可换 Embedding） |
 | 界面 | Gradio 6.x |
 | 测试/评测 | pytest + 自研评测脚本 |
 
@@ -37,8 +38,14 @@ Agent/
 │   ├── memory.py           #   会话记忆（滑动窗口）
 │   ├── long_term_memory.py #   长期记忆（TF 向量 + 余弦检索）
 │   └── factory.py          #   配置加载与 Agent 装配
-├── tools/                  # 11 个工具（时间/计算/待办/笔记/知识检索/天气/记忆…）
-│   └── data_store.py       #   SQLite 公共存储
+├── tools/                  # 13 个工具（时间/计算/待办/笔记/知识/天气/记忆/RAG 检索…）
+│   ├── data_store.py       #   SQLite 公共存储
+│   └── search_docs.py      #   RAG 检索工具（检索本地项目资料库）
+├── rag/                    # 自研 RAG 模块
+│   ├── ingest.py           #   摄入：白名单过滤 + docx/pdf/源码解析
+│   ├── chunker.py          #   切块：段落累积 + 重叠窗口
+│   ├── vectorizer.py       #   TF-IDF 向量化（自研，可替换 Embedding）
+│   └── retriever.py        #   SQLite 存储 + 余弦 top-k 检索（带出处）
 ├── ui/app.py               # Gradio 对话界面（工具轨迹可视化）
 ├── eval/                   # 评测：test_suite.json + run_eval.py → output/report.md
 ├── tests/                  # 单元测试（16 项）
@@ -73,6 +80,8 @@ python -m venv .venv
 记一下明天上午10点开周会 → 待办工具（SQLite 持久化）
 芜湖今天天气怎么样？      → 天气工具
 什么是 RAG？            → 知识检索工具
+高普视觉检测系统的总体架构是什么？  → RAG 检索项目文档（带出处）
+相机标定怎么做？        → RAG 检索算法说明文档
 记住我正在准备面试       → 长期记忆
 我之前说过什么           → 记忆召回（跨会话）
 ```
@@ -103,3 +112,7 @@ python -m venv .venv
 - [x] P4 对话界面与演示（Gradio + 轨迹可视化）
 - [x] P5 评测与迭代（40 条用例：Mock 100% / 真实模型 95%，工具调用经提示词优化至 100%）
 - [x] P6 文档与求职呈现
+- [x] R8 自研 RAG 模块（摄入/切块/TF-IDF/检索）
+- [x] R9 构建 VR 项目知识索引（571 文件 → 白名单过滤 95 文件 → 781 块）并验证检索
+- [x] R10 接入 search_docs 工具 + 评测（45 条 Mock 100%，真实模型验证多轮检索与带出处回答）
+- [x] R11 文档与求职材料升级

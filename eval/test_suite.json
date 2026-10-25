@@ -47,5 +47,10 @@
   {"id": "idle-02", "input": "今天心情不错", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
   {"id": "idle-03", "input": "你叫什么名字", "expected_tool": "", "expected_arguments": {}, "answer_contains": ["收到"]},
   
-  {"id": "dice-01", "input": "掷一个20面的骰子", "expected_tool": "roll_dice", "expected_arguments": {"faces": 20}, "answer_contains": ["骰子点数"]}
+  {"id": "dice-01", "input": "掷一个20面的骰子", "expected_tool": "roll_dice", "expected_arguments": {"faces": 20}, "answer_contains": ["骰子点数"]},
+
+  {"id": "rag-01", "input": "高普视觉检测系统的总体架构是什么", "expected_tool": "search_docs", "expected_arguments": {}, "answer_contains": ["架构"]},
+  {"id": "rag-02", "input": "相机标定怎么做", "expected_tool": "search_docs", "expected_arguments": {}, "answer_contains": ["算法说明"]},
+  {"id": "rag-03", "input": "检索一下项目里的缺陷检测算法", "expected_tool": "search_docs", "expected_arguments": {}, "answer_contains": ["来源"]},
+  {"id": "rag-04", "input": "查一下视觉检测项目里的相机标定", "expected_tool": "search_docs", "expected_arguments": {}, "answer_contains": ["来源"]}
 ]
