@@ -30,6 +30,7 @@ def _extract_query(text: str) -> dict:
     "记住一条关于用户的长期事实或偏好（如职业、目标、喜好），跨会话生效",
     keywords=["记住", "记住了"],
     mock_args_fn=_extract_content,
+    level="write",
 )
 def remember(content: str) -> str:
     """content: 要记住的事实或偏好"""

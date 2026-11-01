@@ -55,6 +55,11 @@ class Tool:
     params_model（可选，Pydantic 护栏）：参数校验模型（Pydantic BaseModel 子类）。
     配置后，run() 执行前先校验/强转参数，脏参数（类型错、缺必填、超范围）
     在进入真实工具函数前被拦截，返回错误文本回填给 LLM 自行纠错。
+
+    level（工具分级，治理）：
+    - read   只读：查询类，无副作用，直接执行
+    - write  写操作：修改状态（数据库/记忆），执行后需在界面可见
+    - danger 危险操作：删除/外部副作用，执行前必须人工确认（Human-in-the-loop）
     """
 
     def __init__(
@@ -66,7 +71,10 @@ class Tool:
         mock_args: dict | None = None,
         mock_args_fn: Callable[[str], dict] | None = None,
         params_model: type | None = None,
+        level: str = "read",
     ):
+        if level not in ("read", "write", "danger"):
+            raise ValueError(f"未知工具级别：{level}")
         self.name = name
         self.description = description
         self.fn = fn
@@ -74,6 +82,7 @@ class Tool:
         self.mock_args = mock_args
         self.mock_args_fn = mock_args_fn
         self.params_model = params_model
+        self.level = level
         self.schema = _infer_schema(fn)
 
     def run(self, **kwargs: Any) -> str:
@@ -141,6 +150,7 @@ def tool(
     mock_args: dict | None = None,
     mock_args_fn: Callable[[str], dict] | None = None,
     params_model: type | None = None,
+    level: str = "read",
 ) -> Callable[[Callable], Tool]:
     """装饰器：把普通函数声明为 Agent 工具。
 
@@ -155,6 +165,9 @@ def tool(
 
     可选（Pydantic 护栏）：
         params_model : Pydantic BaseModel 子类，run() 执行前校验/强转参数
+
+    可选（工具分级）：
+        level        : read（默认，只读）| write（写操作）| danger（危险，需人工确认）
     """
 
     def deco(fn: Callable) -> Tool:
@@ -166,6 +179,7 @@ def tool(
             mock_args=mock_args,
             mock_args_fn=mock_args_fn,
             params_model=params_model,
+            level=level,
         )
 
     return deco

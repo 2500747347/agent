@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Callable
 
 from agent.history_memory import estimate_tokens
 from agent.llm import LLMResponse  # noqa: F401  (类型标注)
@@ -43,6 +43,7 @@ class Agent:
         max_context_tokens: int = _DEFAULT_MAX_CONTEXT_TOKENS,
         retrieve_budget: int = _DEFAULT_RETRIEVE_BUDGET,
         tool_result_max_chars: int = _DEFAULT_TOOL_RESULT_MAX_CHARS,
+        human_confirm: Callable[[str, dict], bool] | None = None,
     ):
         self._llm = llm
         self._registry = registry
@@ -52,6 +53,9 @@ class Agent:
         self._max_context_tokens = max_context_tokens
         self._retrieve_budget = retrieve_budget
         self._tool_result_max_chars = tool_result_max_chars
+        # 人工确认器：danger 工具执行前的闸门（工具名, 参数）-> 是否放行。
+        # 未配置时危险操作默认拒绝（fail-safe）。
+        self._human_confirm = human_confirm
 
     @property
     def memory(self) -> ConversationMemory:
@@ -134,10 +138,22 @@ class Agent:
                 tool = self._registry.get(tc.name)
                 if tool is None:
                     result = f"[错误] 未知工具：{tc.name}"
+                elif tool.level == "danger" and self._human_confirm is None:
+                    # 安全默认（fail-safe）：未配置人工确认 → 拒绝危险操作
+                    result = (
+                        f"[需人工确认] 工具 {tc.name} 属于危险操作（{tool.description}），"
+                        "当前未配置人工确认，已拒绝执行。"
+                    )
+                elif tool.level == "danger":
+                    # 有人工确认器 → 执行前询问用户
+                    if self._human_confirm(tc.name, tc.arguments):
+                        result = tool.run(**tc.arguments)
+                    else:
+                        result = f"[已取消] 用户拒绝了 {tc.name} 的操作（参数：{tc.arguments}）。"
                 else:
                     result = tool.run(**tc.arguments)
-                    if len(result) > self._tool_result_max_chars:
-                        result = result[: self._tool_result_max_chars] + "…[已截断，结果过长]"
+                if len(result) > self._tool_result_max_chars:
+                    result = result[: self._tool_result_max_chars] + "…[已截断，结果过长]"
                 messages.append(
                     {"role": "tool", "content": result, "tool_call_id": tc.id, "name": tc.name}
                 )

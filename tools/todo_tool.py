@@ -31,6 +31,7 @@ def _extract_todo_id(text: str) -> dict:
     "新增一条待办事项。content 必填；due 可填截止时间描述（如 明天上午10点）。",
     keywords=["记一下", "提醒我", "别忘了", "添加待办", "新增待办"],
     mock_args_fn=_extract_add_todo,
+    level="write",
 )
 def add_todo(content: str, due: str = "") -> str:
     """content: 待办内容；due: 截止时间描述（可选）"""
@@ -71,6 +72,7 @@ def list_todos() -> str:
     "把指定编号的待办事项标记为已完成",
     keywords=["完成", "搞定", "做完", "办完"],
     mock_args_fn=_extract_todo_id,
+    level="write",
 )
 def complete_todo(todo_id: int) -> str:
     """todo_id: 待办编号（list_todos 返回的 id）"""
@@ -83,5 +85,27 @@ def complete_todo(todo_id: int) -> str:
         if cur.rowcount == 0:
             return f"未找到编号为 {todo_id} 的未完成待办。"
         return f"待办 #{todo_id} 已标记为完成。"
+    finally:
+        conn.close()
+
+
+@tool(
+    "delete_todo",
+    "删除指定编号的待办事项（不可恢复，属于危险操作，执行前需人工确认）",
+    keywords=["删除待办", "删掉待办", "删除", "删掉"],
+    mock_args_fn=_extract_todo_id,
+    level="danger",
+)
+def delete_todo(todo_id: int) -> str:
+    """todo_id: 待办编号（list_todos 返回的 id）"""
+    conn = get_connection()
+    try:
+        with conn:
+            cur = conn.execute(
+                "DELETE FROM todos WHERE id=? AND status='open'", (todo_id,)
+            )
+        if cur.rowcount == 0:
+            return f"未找到编号为 {todo_id} 的未完成待办。"
+        return f"待办 #{todo_id} 已删除。"
     finally:
         conn.close()

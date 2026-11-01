@@ -143,3 +143,71 @@ def test_guard_off_for_legacy_tools():
     tool = _registry_get("get_weather")
     out = tool.run(city="芜湖")
     assert "芜湖" in out and "℃" in out
+
+
+# -- 工具分级（Harness 层）---------------------------------------------------
+
+
+def test_tool_levels():
+    """只读默认 read；写操作显式 write；删除类危险操作 danger。"""
+    reg = make_registry()
+    assert reg.get("get_current_time").level == "read"
+    assert reg.get("get_weather").level == "read"
+    assert reg.get("calculate").level == "read"
+    assert reg.get("list_todos").level == "read"
+    assert reg.get("add_todo").level == "write"
+    assert reg.get("complete_todo").level == "write"
+    assert reg.get("add_note").level == "write"
+    assert reg.get("remember").level == "write"
+    assert reg.get("delete_todo").level == "danger"
+
+
+def test_danger_blocked_without_confirm():
+    """未配置人工确认 → 危险操作默认拒绝（fail-safe），数据未被删除。"""
+    reg = make_registry()
+    add = reg.get("add_todo").run(content="待删除的测试待办")
+    todo_id = int(add.split("#")[1].split("：")[0])
+    agent = Agent(llm=MockLLM(reg), registry=reg)
+    r = agent.run(f"删除编号{todo_id}的待办")
+    assert "需人工确认" in r["answer"]
+    # 待办仍然存在 → 闸门确实拦截了
+    listing = reg.get("list_todos").run()
+    assert "待删除的测试待办" in listing
+
+
+def test_danger_confirm_approve():
+    """人工确认器返回 True → 危险操作放行执行。"""
+    reg = make_registry()
+    add = reg.get("add_todo").run(content="确认后删除的待办")
+    todo_id = int(add.split("#")[1].split("：")[0])
+    calls: list[str] = []
+    agent = Agent(
+        llm=MockLLM(reg), registry=reg,
+        human_confirm=lambda name, args: calls.append(name) or True,
+    )
+    r = agent.run(f"删除编号{todo_id}的待办")
+    assert calls == ["delete_todo"]
+    assert "已删除" in r["answer"]
+    assert "确认后删除的待办" not in reg.get("list_todos").run()
+
+
+def test_danger_confirm_reject():
+    """人工确认器返回 False → 操作取消并回填给 LLM。"""
+    reg = make_registry()
+    add = reg.get("add_todo").run(content="拒绝删除的待办")
+    todo_id = int(add.split("#")[1].split("：")[0])
+    agent = Agent(
+        llm=MockLLM(reg), registry=reg,
+        human_confirm=lambda name, args: False,
+    )
+    r = agent.run(f"删除编号{todo_id}的待办")
+    assert "已取消" in r["answer"]
+    assert "拒绝删除的待办" in reg.get("list_todos").run()
+
+
+def test_write_unaffected_without_confirm():
+    """write 级工具不需要人工确认，正常执行。"""
+    reg = make_registry()
+    agent = Agent(llm=MockLLM(reg), registry=reg)
+    r = agent.run("记一下明天上午10点开周会")
+    assert "已新增待办" in r["answer"]

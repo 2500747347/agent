@@ -34,6 +34,7 @@ def _extract_keyword(text: str) -> dict:
     "新增一条笔记，content 为笔记内容",
     keywords=["记笔记", "写笔记", "备忘", "记一条", "笔记"],
     mock_args_fn=_extract_note,
+    level="write",
 )
 def add_note(content: str) -> str:
     """content: 笔记内容"""
