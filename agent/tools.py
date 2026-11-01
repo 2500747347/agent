@@ -51,6 +51,10 @@ class Tool:
     mock_args / mock_args_fn 仅 Mock 模式使用（真实模型忽略）：
     - mock_args     : 固定的参数字典
     - mock_args_fn  : callable，接收用户输入文本 → 参数字典（用于从输入中提取参数）
+
+    params_model（可选，Pydantic 护栏）：参数校验模型（Pydantic BaseModel 子类）。
+    配置后，run() 执行前先校验/强转参数，脏参数（类型错、缺必填、超范围）
+    在进入真实工具函数前被拦截，返回错误文本回填给 LLM 自行纠错。
     """
 
     def __init__(
@@ -61,6 +65,7 @@ class Tool:
         keywords: list[str] | None = None,
         mock_args: dict | None = None,
         mock_args_fn: Callable[[str], dict] | None = None,
+        params_model: type | None = None,
     ):
         self.name = name
         self.description = description
@@ -68,10 +73,20 @@ class Tool:
         self.keywords = keywords or []
         self.mock_args = mock_args
         self.mock_args_fn = mock_args_fn
+        self.params_model = params_model
         self.schema = _infer_schema(fn)
 
     def run(self, **kwargs: Any) -> str:
-        """执行工具，任何异常都转成文本结果（回填给 LLM 自行纠错）。"""
+        """执行工具，任何异常都转成文本结果（回填给 LLM 自行纠错）。
+
+        有 params_model 时先校验：校验失败直接返回错误文本，不执行工具。
+        """
+        if self.params_model is not None:
+            try:
+                validated = self.params_model(**kwargs)
+                kwargs = validated.model_dump()
+            except Exception as exc:  # noqa: BLE001 —— 护栏拒绝脏参数，不向上抛
+                return f"[参数校验失败] {exc}"
         try:
             result = self.fn(**kwargs)
             if isinstance(result, str):
@@ -125,6 +140,7 @@ def tool(
     keywords: list[str] | None = None,
     mock_args: dict | None = None,
     mock_args_fn: Callable[[str], dict] | None = None,
+    params_model: type | None = None,
 ) -> Callable[[Callable], Tool]:
     """装饰器：把普通函数声明为 Agent 工具。
 
@@ -136,6 +152,9 @@ def tool(
     可选（Mock 模式参数补给）：
         mock_args    : 固定的参数字典
         mock_args_fn : 从用户输入文本提取参数字典的函数
+
+    可选（Pydantic 护栏）：
+        params_model : Pydantic BaseModel 子类，run() 执行前校验/强转参数
     """
 
     def deco(fn: Callable) -> Tool:
@@ -146,6 +165,7 @@ def tool(
             keywords=keywords or [],
             mock_args=mock_args,
             mock_args_fn=mock_args_fn,
+            params_model=params_model,
         )
 
     return deco

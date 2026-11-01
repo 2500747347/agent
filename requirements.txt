@@ -14,3 +14,5 @@ numpy>=1.26
 pypdf>=6.0
 # P2 会话历史语义检索（EmbeddingVectorizer；模型权重见 models/，不入库）
 sentence-transformers>=3.0
+# Harness 参数护栏（可选：@tool params_model 校验，旧工具无需改动）
+pydantic>=2.0

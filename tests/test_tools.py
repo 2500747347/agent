@@ -108,3 +108,38 @@ def test_mock_full_chain_memory():
     agent2 = make_agent()
     r2 = agent2.run("我之前说过什么")
     assert "面试" in r2["answer"]
+
+
+# -- Pydantic 参数护栏（Harness 层）------------------------------------------
+
+
+def test_roll_dice_guard_valid_and_default():
+    tool = _registry_get("roll_dice")
+    assert tool.run(faces=20).startswith("骰子点数")
+    # 无参数 → 默认 6 面（护栏默认值兜底）
+    assert tool.run().startswith("骰子点数")
+
+
+def test_roll_dice_guard_rejects_bad_params():
+    """护栏拦截脏参数：类型错误 / 范围越界，不进入真实函数。"""
+    tool = _registry_get("roll_dice")
+    assert tool.run(faces="abc").startswith("[参数校验失败]")   # 类型错
+    assert tool.run(faces=1).startswith("[参数校验失败]")        # 低于 ge=2
+    assert tool.run(faces=101).startswith("[参数校验失败]")      # 高于 le=100
+
+
+def test_roll_dice_guard_mock_full_chain():
+    """Mock 全链路：评测用例（20面）经护栏正常执行。"""
+    agent = make_agent()
+    r = agent.run("掷一个20面的骰子")
+    assert "骰子点数" in r["answer"]
+    calls = [t for t in r["trace"] if t["type"] == "tool_call"]
+    assert calls and calls[0]["name"] == "roll_dice"
+    assert calls[0]["arguments"] == {"faces": 20}
+
+
+def test_guard_off_for_legacy_tools():
+    """旧工具未配置 params_model：行为不变（零改动兼容）。"""
+    tool = _registry_get("get_weather")
+    out = tool.run(city="芜湖")
+    assert "芜湖" in out and "℃" in out
