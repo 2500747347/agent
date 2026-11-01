@@ -8,10 +8,15 @@
 
 上下文预算（P1）：组装时估算总 token，超预算按可牺牲性依次收缩——
 先砍检索注入片段，再收缩窗口旧轮次（被裁轮次照常落库，不失忆）。
+
+循环保险丝（Loop 终止机制补全）：
+- 重复调用检测：连续 N 次相同 (工具, 参数) → 判定死循环，提前终止
+- 单轮工具超时：工具执行超过上限 → 中断等待并回填提示（默认关闭）
 """
 from __future__ import annotations
 
 import json
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 from agent.history_memory import estimate_tokens
@@ -25,6 +30,8 @@ _DEFAULT_MAX_CONTEXT_TOKENS = 8000
 _DEFAULT_RETRIEVE_BUDGET = 1500
 # 单条工具结果最大字符数（超长截断，防止单轮撑爆上下文）
 _DEFAULT_TOOL_RESULT_MAX_CHARS = 4000
+# 重复调用检测：同一 (工具, 参数) 连续出现此次数 → 判定死循环
+_DEFAULT_REPETITION_LIMIT = 3
 
 
 def _ctx_tokens(msgs: list[dict]) -> int:
@@ -44,6 +51,8 @@ class Agent:
         retrieve_budget: int = _DEFAULT_RETRIEVE_BUDGET,
         tool_result_max_chars: int = _DEFAULT_TOOL_RESULT_MAX_CHARS,
         human_confirm: Callable[[str, dict], bool] | None = None,
+        repetition_limit: int = _DEFAULT_REPETITION_LIMIT,
+        tool_timeout: float = 0,
     ):
         self._llm = llm
         self._registry = registry
@@ -56,6 +65,26 @@ class Agent:
         # 人工确认器：danger 工具执行前的闸门（工具名, 参数）-> 是否放行。
         # 未配置时危险操作默认拒绝（fail-safe）。
         self._human_confirm = human_confirm
+        # 循环保险丝：连续相同 (工具, 参数) 达此数 → 判定死循环提前终止（0 关闭）
+        self._repetition_limit = repetition_limit
+        # 单轮工具超时（秒）：超过则中断等待并回填提示；0 表示关闭（默认）
+        self._tool_timeout = tool_timeout
+
+    def _run_tool(self, tool: Any, **kwargs: Any) -> str:
+        """执行工具；启用 tool_timeout 时包一层超时，超时不阻塞主循环。
+
+        注意：shutdown(wait=False)——超时后不等待慢工具线程，避免把超时变成摆设。
+        """
+        if self._tool_timeout <= 0:
+            return tool.run(**kwargs)
+        ex = ThreadPoolExecutor(max_workers=1)
+        future = ex.submit(tool.run, **kwargs)
+        try:
+            return future.result(timeout=self._tool_timeout)
+        except TimeoutError:
+            return f"[工具超时] 工具执行超过 {self._tool_timeout} 秒，已中断等待。"
+        finally:
+            ex.shutdown(wait=False)
 
     @property
     def memory(self) -> ConversationMemory:
@@ -109,6 +138,11 @@ class Agent:
 
         trace: list[dict] = []
 
+        # 重复调用检测状态：连续相同 (工具, 参数) 计数
+        last_call_key: str | None = None
+        repeat_count = 0
+        loop_detected: str | None = None
+
         for step in range(self._max_iterations):
             resp = self._llm.chat(messages, tools=self._registry.schemas())
 
@@ -135,6 +169,39 @@ class Agent:
             messages.append({"role": "assistant", "content": None, "tool_calls": raw_calls})
 
             for tc in resp.tool_calls:
+                # 保险丝①：重复调用检测——同一 (工具, 参数) 连续出现达上限 → 死循环
+                call_key = (
+                    tc.name,
+                    json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False),
+                )
+                if call_key == last_call_key:
+                    repeat_count += 1
+                else:
+                    last_call_key = call_key
+                    repeat_count = 1
+                if (
+                    self._repetition_limit
+                    and repeat_count >= self._repetition_limit
+                ):
+                    result = (
+                        f"[循环终止] 检测到重复调用 {tc.name}（参数 {tc.arguments}）"
+                        f"连续 {repeat_count} 次，判定陷入循环，已提前终止。"
+                    )
+                    loop_detected = result
+                    messages.append(
+                        {"role": "tool", "content": result, "tool_call_id": tc.id, "name": tc.name}
+                    )
+                    trace.append(
+                        {
+                            "type": "tool_call",
+                            "step": step,
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                            "result": result,
+                        }
+                    )
+                    break
+
                 tool = self._registry.get(tc.name)
                 if tool is None:
                     result = f"[错误] 未知工具：{tc.name}"
@@ -147,11 +214,11 @@ class Agent:
                 elif tool.level == "danger":
                     # 有人工确认器 → 执行前询问用户
                     if self._human_confirm(tc.name, tc.arguments):
-                        result = tool.run(**tc.arguments)
+                        result = self._run_tool(tool, **tc.arguments)
                     else:
                         result = f"[已取消] 用户拒绝了 {tc.name} 的操作（参数：{tc.arguments}）。"
                 else:
-                    result = tool.run(**tc.arguments)
+                    result = self._run_tool(tool, **tc.arguments)
                 if len(result) > self._tool_result_max_chars:
                     result = result[: self._tool_result_max_chars] + "…[已截断，结果过长]"
                 messages.append(
@@ -167,8 +234,16 @@ class Agent:
                     }
                 )
 
-        # 达到轮次上限：强制兜底，防止死循环
-        fallback = "（已达到最大推理轮次，请简化问题或稍后再试。）"
+            if loop_detected:
+                break
+
+        # 达到轮次上限或循环终止：强制兜底，防止死循环
+        if loop_detected:
+            fallback = (
+                f"（检测到重复工具调用，已提前终止，避免死循环。）\n{loop_detected}"
+            )
+        else:
+            fallback = "（已达到最大推理轮次，请简化问题或稍后再试。）"
         trace.append({"type": "limit", "step": self._max_iterations, "content": fallback})
         self._memory.add_user(user_input)
         self._memory.add_assistant(fallback)
