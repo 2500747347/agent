@@ -34,6 +34,15 @@ CREATE TABLE IF NOT EXISTS long_term_memory (
     content    TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+
+CREATE TABLE IF NOT EXISTS conversation_history (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id TEXT NOT NULL DEFAULT 'default',
+    role       TEXT NOT NULL,
+    content    TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE INDEX IF NOT EXISTS idx_conv_history_session ON conversation_history(session_id, id);
 """
 
 

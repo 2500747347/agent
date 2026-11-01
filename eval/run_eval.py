@@ -33,6 +33,7 @@ def clean_store() -> None:
     conn = get_connection()
     with conn:
         conn.execute("DELETE FROM long_term_memory")
+        conn.execute("DELETE FROM conversation_history")
         conn.execute("DELETE FROM todos")
         conn.execute("DELETE FROM notes")
         conn.execute("DELETE FROM sqlite_sequence")  # 重置自增序列

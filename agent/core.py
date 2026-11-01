@@ -48,9 +48,24 @@ class Agent:
             ]
         }
         """
-        messages = self._memory.messages + [{"role": "user", "content": user_input}]
+        # 组装上下文：System + 历史检索片段（独立 system 消息，不污染 user 输入，
+        # Mock 模式只匹配 user/tool 消息，天然忽略该注入，评测行为不变）
+        messages: list[dict] = []
         if self._system_prompt:
-            messages = [{"role": "system", "content": self._system_prompt}] + messages
+            messages.append({"role": "system", "content": self._system_prompt})
+
+        retrieved = self._memory.retrieve_context(user_input)
+        if retrieved:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": "【对话历史中的相关信息，供参考】\n"
+                    + "\n".join(f"- {c}" for c in retrieved),
+                }
+            )
+
+        messages += self._memory.messages
+        messages.append({"role": "user", "content": user_input})
         trace: list[dict] = []
 
         for step in range(self._max_iterations):

@@ -1,17 +1,24 @@
-"""会话记忆（滑动窗口）。
+"""会话记忆（滑动窗口 + 历史持久化）。
 
 职责：按 OpenAI 消息格式维护多轮对话历史，
 超长时自动裁掉最旧的一整轮（一轮 = 一个 user 消息及其后续关联消息），
 保证发送给 LLM 的上下文可控。
+
+被裁掉的旧消息不再丢弃：转发给 HistoryMemory 落库（SQLite），
+后续可通过向量检索（retrieve_context）按相关性取回，实现"不失忆"。
 """
 from __future__ import annotations
 
+from agent.history_memory import HistoryMemory
+
 
 class ConversationMemory:
-    def __init__(self, max_turns: int = 10):
+    def __init__(self, max_turns: int = 10, history: HistoryMemory | None = None):
         self._messages: list[dict] = []
         self._user_count = 0
         self._max_turns = max_turns
+        # 历史持久层：默认启用（惰性创建默认实例）
+        self._history: HistoryMemory | None = history if history is not None else HistoryMemory()
 
     # -- 写入 --------------------------------------------------------------
 
@@ -44,11 +51,26 @@ class ConversationMemory:
         self._messages.clear()
         self._user_count = 0
 
+    def retrieve_context(
+        self,
+        query: str,
+        top_k: int | None = None,
+        token_budget: int | None = None,
+    ) -> list[str]:
+        """按相关性检索已落库的历史片段（供 Agent 注入上下文）。
+
+        query 为空时返回最近 top_k 条兜底；结果带 token 预算上限。
+        """
+        if self._history is None:
+            return []
+        return self._history.retrieve(query, top_k=top_k, token_budget=token_budget)
+
     # -- 裁剪 --------------------------------------------------------------
 
     def _trim(self) -> None:
         while self._user_count > self._max_turns:
-            # 从头找到第一个 user 消息的位置，删掉它及之前的全部消息
+            # 找第一个 user 消息，把它及同轮后续消息（直到下一个 user 之前）整轮裁掉，
+            # 避免留下"没有 user 的孤立 assistant"污染上下文
             idx = None
             for i, m in enumerate(self._messages):
                 if m.get("role") == "user":
@@ -56,5 +78,14 @@ class ConversationMemory:
                     break
             if idx is None:
                 break
-            del self._messages[: idx + 1]
+            end = len(self._messages)
+            for i in range(idx + 1, len(self._messages)):
+                if self._messages[i].get("role") == "user":
+                    end = i
+                    break
+            # 旧消息不丢弃：落库到历史持久层（content 非空的才存）
+            removed = self._messages[idx:end]
+            if self._history is not None:
+                self._history.add_messages(removed)
+            del self._messages[idx:end]
             self._user_count -= 1
