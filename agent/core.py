@@ -20,7 +20,12 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
 from agent.history_memory import estimate_tokens
-from agent.llm import LLMResponse  # noqa: F401  (类型标注)
+from agent.llm import (
+    ContextLengthExceeded,
+    LLMError,
+    LLMResponse,  # noqa: F401  (类型标注)
+    LLMRetryableError,
+)
 from agent.memory import ConversationMemory
 from agent.tools import ToolRegistry
 
@@ -142,9 +147,38 @@ class Agent:
         last_call_key: str | None = None
         repeat_count = 0
         loop_detected: str | None = None
+        # 上下文超窗收缩标志：同一轮对话内只收缩一次
+        ctx_shrunk = False
+
+        def llm_fail(msg: str, step: int) -> dict[str, Any]:
+            """LLM 调用失败统一兜底：记录 trace、写入记忆、返回可读文本（不崩溃）。"""
+            trace.append({"type": "limit", "step": step, "content": msg})
+            self._memory.add_user(user_input)
+            self._memory.add_assistant(msg)
+            return {"answer": msg, "trace": trace}
 
         for step in range(self._max_iterations):
-            resp = self._llm.chat(messages, tools=self._registry.schemas())
+            try:
+                resp = self._llm.chat(messages, tools=self._registry.schemas())
+            except ContextLengthExceeded:
+                # 上下文超窗（模型侧拒绝，重试同样失败）：收缩上下文后原轮重试一次
+                if not ctx_shrunk:
+                    ctx_shrunk = True
+                    self._memory.ensure_token_budget(self._max_context_tokens // 2)
+                    messages = base + self._memory.messages + [user_message]
+                    continue
+                return llm_fail(
+                    "（模型上下文超限：已收缩对话历史重试仍失败，请简化问题或开启新会话。）",
+                    step,
+                )
+            except LLMRetryableError as exc:
+                return llm_fail(
+                    f"（模型服务暂时不可用，自动重试后仍失败，请稍后再试。{exc}）", step
+                )
+            except LLMError as exc:
+                return llm_fail(f"（模型调用失败：{exc}）", step)
+            except Exception as exc:  # noqa: BLE001 —— LLM 未知异常兜底
+                return llm_fail(f"（模型调用出现未知异常：{exc}）", step)
 
             # 情况A：模型不再调用工具 → 产出最终回复
             if not resp.has_tool_calls:
