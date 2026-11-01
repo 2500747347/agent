@@ -12,7 +12,13 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from agent.history_memory import HistoryMemory, TfVectorizer, estimate_tokens  # noqa: E402
+from agent.history_memory import (  # noqa: E402
+    EmbeddingVectorizer,
+    HistoryMemory,
+    TfVectorizer,
+    estimate_tokens,
+    try_build_embedding_vectorizer,
+)
 from agent.memory import ConversationMemory  # noqa: E402
 from agent.core import Agent  # noqa: E402
 from agent.llm import LLMResponse, MockLLM  # noqa: E402
@@ -193,3 +199,41 @@ def test_tool_result_truncation():
     result = calls[0]["result"]
     assert len(result) <= 100 + len("…[已截断，结果过长]")
     assert "已截断" in result
+
+
+# -- P2：语义 Embedding -------------------------------------------------------
+
+_EMB_AVAILABLE = try_build_embedding_vectorizer() is not None
+
+
+@pytest.mark.skipif(not _EMB_AVAILABLE, reason="本地 embedding 模型未就绪")
+def test_embedding_semantic_recall():
+    """语义召回：字面零重合但语义相关（TF 判 0 分，Embedding 可命中）。"""
+    hm = HistoryMemory(session_id="emb1", vectorizer=EmbeddingVectorizer())
+    hm.add_messages([{"role": "user", "content": "我想找一份工作"}])
+    hm.add_messages([{"role": "user", "content": "今天天气不错"}])
+    hits = hm.retrieve("求职意向")  # 与"工作"零字面重合
+    assert hits, "Embedding 应能召回语义相关历史"
+    assert any("工作" in h for h in hits), f"未召回目标历史: {hits}"
+
+
+@pytest.mark.skipif(not _EMB_AVAILABLE, reason="本地 embedding 模型未就绪")
+def test_embedding_end_to_end_injection():
+    """端到端：窗口裁掉的旧轮次，经 Embedding 检索注入后续对话。
+
+    裁剪发生在每轮 run 结束（add_user 时），故第 4 轮 query 才会
+    命中第 3 轮结束时才落库的第 1 轮历史。
+    """
+    cap = _CaptureLLM()
+    mem = ConversationMemory(
+        max_turns=2, history=HistoryMemory(vectorizer=EmbeddingVectorizer())
+    )
+    agent = Agent(llm=cap, registry=ToolRegistry(), memory=mem, max_iterations=1)
+    agent.run("第一轮：我想找一份 Agent 开发的工作")
+    agent.run("第二轮：随便聊聊天气")
+    agent.run("第三轮：今天吃了吗")
+    agent.run("第四轮：我之前的求职意向是什么")  # 语义相关，应召回第 1 轮
+    last = cap.seen[-1]
+    injected = [m for m in last if "【对话历史" in m["content"]]
+    assert injected, "未注入任何检索片段"
+    assert any("Agent 开发" in m["content"] for m in injected), "语义相关旧历史未被注入"

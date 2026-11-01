@@ -12,3 +12,5 @@ pandas>=2.2
 numpy>=1.26
 # RAG: PDF 文本提取
 pypdf>=6.0
+# P2 会话历史语义检索（EmbeddingVectorizer；模型权重见 models/，不入库）
+sentence-transformers>=3.0

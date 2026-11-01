@@ -1,21 +1,27 @@
-"""会话历史持久层 + 向量检索注入（P0：零依赖 TF 版）。
+"""会话历史持久层 + 向量检索注入（P0 零依赖 TF 版 / P2 语义 Embedding 版）。
 
 职责：解决"滑动窗口截断即失忆"与"长对话上下文爆炸"两个问题。
 - 被滑动窗口裁掉的旧消息不再丢弃，全部落库（SQLite）；
 - 每轮对话开始时，用当前用户输入做 query，向量检索取回相关历史片段注入上下文；
-- 向量器接口化：默认 TfVectorizer（词袋 TF + 余弦，零依赖），
-  P2 可平滑替换为 EmbeddingVectorizer（本地/API 语义向量）而不动本模块逻辑。
+- 向量器接口化：默认 TfVectorizer（词袋 TF + 余弦，零依赖）；
+  P2 可注入 EmbeddingVectorizer（本地 bge-small-zh，语义检索）而不动本模块流程。
 
-token 预算（P0 简化）：以字符数粗估（中文约 1 字 ≈ 1 token），
-P1 再接 tiktoken 精确计数。
+token 预算（P1）：estimate_tokens 启发式估算（中文≈1字/token、英文≈4字符/token）。
 """
 from __future__ import annotations
 
+import os
 from typing import Any, Protocol
 
 from tools.data_store import get_connection, init_db
 
 from rag.vectorizer import cosine, tokenize
+
+# 本地语义 Embedding 模型路径（P2：用户下载到项目 models/ 目录）
+_EMBEDDING_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "models"))
+_DEFAULT_EMBEDDING_PATH = os.path.join(_EMBEDDING_DIR, "bge-small-zh-v1.5")
+# BGE 官方建议：检索 query 加指令前缀，可显著提升召回
+_BGE_QUERY_PREFIX = "为这个句子生成表示以用于检索相关文章："
 
 # 落库单条内容上限：超大工具结果（如 RAG 检索）截断再存，防止单条无限膨胀
 MAX_CONTENT = 2000
@@ -26,16 +32,19 @@ MAX_SCAN = 5000
 
 
 class Vectorizer(Protocol):
-    """向量器接口：P2 换 Embedding 时实现同一协议即可。"""
+    """向量器接口：P2 换 Embedding 时实现同一协议即可。
 
-    def vectorize(self, text: str) -> Any: ...
+    is_query=True 时表示该文本是检索 query（供语义模型加指令前缀）。
+    """
+
+    def vectorize(self, text: str, is_query: bool = False) -> Any: ...
     def similarity(self, a: Any, b: Any) -> float: ...
 
 
 class TfVectorizer:
-    """词袋 TF 向量器（零依赖，字面匹配，P0 默认实现）。"""
+    """词袋 TF 向量器（零依赖，字面匹配，默认实现）。"""
 
-    def vectorize(self, text: str) -> dict[str, int]:
+    def vectorize(self, text: str, is_query: bool = False) -> dict[str, int]:
         tf: dict[str, int] = {}
         for tok in tokenize(text):
             tf[tok] = tf.get(tok, 0) + 1
@@ -43,6 +52,38 @@ class TfVectorizer:
 
     def similarity(self, a: dict[str, int], b: dict[str, int]) -> float:
         return cosine(a, b)
+
+
+class EmbeddingVectorizer:
+    """语义向量器（P2）：sentence-transformers 加载本地模型，稠密向量 + 余弦。
+
+    依赖 models/bge-small-zh-v1.5（约 95MB）与 sentence-transformers；
+    模型缺失或库未安装时由调用方回退 TfVectorizer。
+    """
+
+    def __init__(self, model_path: str = _DEFAULT_EMBEDDING_PATH, device: str = "cpu"):
+        from sentence_transformers import SentenceTransformer
+
+        self._model = SentenceTransformer(model_path, device=device)
+
+    def vectorize(self, text: str, is_query: bool = False) -> list[float]:
+        if is_query:
+            text = _BGE_QUERY_PREFIX + text
+        return self._model.encode(text, normalize_embeddings=True).tolist()
+
+    def similarity(self, a: list[float], b: list[float]) -> float:
+        # 已归一化向量的点积 = 余弦相似度
+        return float(sum(x * y for x, y in zip(a, b)))
+
+
+def try_build_embedding_vectorizer() -> EmbeddingVectorizer | None:
+    """尝试构建语义向量器；模型/依赖不可用时返回 None（调用方回退 TF）。"""
+    if not os.path.isdir(_DEFAULT_EMBEDDING_PATH):
+        return None
+    try:
+        return EmbeddingVectorizer()
+    except Exception:
+        return None
 
 
 def estimate_tokens(text: str) -> int:
@@ -138,13 +179,13 @@ class HistoryMemory:
         if not query.strip():
             return [r["content"] for r in rows[:top_k]]
 
-        q_vec = self._vectorizer.vectorize(query)
+        q_vec = self._vectorizer.vectorize(query, is_query=True)
         if not q_vec:
             return [r["content"] for r in rows[:top_k]]
 
         scored: list[tuple[float, str]] = []
         for r in rows:
-            doc_vec = self._vectorizer.vectorize(r["content"][:RETRIEVE_TRUNCATE])
+            doc_vec = self._vectorizer.vectorize(r["content"][:RETRIEVE_TRUNCATE], is_query=False)
             if not doc_vec:
                 continue
             score = self._vectorizer.similarity(q_vec, doc_vec)

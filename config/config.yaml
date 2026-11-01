@@ -11,3 +11,12 @@ llm:
   model: "gpt-5-codex"  # 实际模型名，如 gpt-5-codex / deepseek-chat / qwen-plus
   temperature: 0.3
   max_iterations: 5     # ReAct 循环轮次上限（防死循环）
+
+# ===== 会话记忆配置 =====
+# vectorizer 选择会话历史的检索向量器：
+#   tf        —— 词袋 TF + 余弦（零依赖，字面匹配，默认）
+#   embedding —— 本地 bge-small-zh 语义向量（需已下载 models/bge-small-zh-v1.5，
+#                同义不同字也能召回；模型缺失时自动回退 tf）
+memory:
+  max_turns: 10         # 滑动窗口保留轮数（更早的轮次落库后按相关性召回）
+  vectorizer: embedding # tf | embedding（当前已下载 bge-small-zh 本地模型）

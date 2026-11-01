@@ -15,7 +15,9 @@ import os
 import yaml
 
 from agent.core import Agent
+from agent.history_memory import HistoryMemory, try_build_embedding_vectorizer
 from agent.llm import MockLLM, OpenAILLM
+from agent.memory import ConversationMemory
 from agent.tools import ToolRegistry
 
 _CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config"))
@@ -71,9 +73,22 @@ def build_agent() -> Agent:
     else:
         llm = MockLLM(registry)
 
+    # 会话记忆：P2 可选语义向量检索（config.yaml memory.vectorizer: tf | embedding）
+    mem_cfg = cfg.get("memory", {})
+    history: HistoryMemory | None = None
+    if mem_cfg.get("vectorizer", "tf") == "embedding":
+        emb = try_build_embedding_vectorizer()
+        history = HistoryMemory(vectorizer=emb) if emb else None
+        # 模型/依赖不可用时回退默认 TF（history=None → ConversationMemory 自动建 TF 版）
+    memory = ConversationMemory(
+        max_turns=int(mem_cfg.get("max_turns", 10)),
+        history=history,
+    )
+
     return Agent(
         llm=llm,
         registry=registry,
+        memory=memory,
         max_iterations=int(llm_cfg.get("max_iterations", 5)),
         system_prompt=_SYSTEM_PROMPT,
     )
