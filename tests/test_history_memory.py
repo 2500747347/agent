@@ -12,8 +12,11 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from agent.history_memory import HistoryMemory, TfVectorizer  # noqa: E402
+from agent.history_memory import HistoryMemory, TfVectorizer, estimate_tokens  # noqa: E402
 from agent.memory import ConversationMemory  # noqa: E402
+from agent.core import Agent  # noqa: E402
+from agent.llm import LLMResponse, MockLLM  # noqa: E402
+from agent.tools import ToolRegistry, tool  # noqa: E402
 from tools.data_store import get_connection  # noqa: E402
 
 
@@ -111,3 +114,82 @@ def test_trim_offloads_to_history():
 def test_retrieve_context_empty_without_history():
     mem = ConversationMemory(max_turns=2, history=None)
     assert mem.retrieve_context("随便问问") == []
+
+
+# -- P1：token 预算 ----------------------------------------------------------
+
+
+def test_estimate_tokens():
+    assert estimate_tokens("") == 0
+    assert estimate_tokens("你好世界") == 4          # 中文 1 字 ≈ 1 token
+    assert estimate_tokens("hello world") == 2       # ASCII 4 字符 ≈ 1 token
+    assert estimate_tokens("你好abc") == 2           # 混合
+
+
+def test_ensure_token_budget_trims_and_offloads():
+    mem = ConversationMemory(max_turns=10)
+    for i in range(10):
+        mem.add_user(f"第{i + 1}轮" + "测" * 100)     # 每轮 user ≈ 104 token
+        mem.add_assistant("答" * 50)                  # 每轮 assistant ≈ 50 token
+    assert mem.retrieve_context  # 窗口已接近满
+    window_tokens = sum(estimate_tokens(m.get("content") or "") for m in mem.messages)
+    assert window_tokens > 800                        # 确认超预算场景成立
+
+    remaining = mem.ensure_token_budget(800)
+    assert remaining <= 800
+    # 被裁轮次已落库且可检索召回（不失忆）
+    hits = mem.retrieve_context("第1轮")
+    assert any("第1轮" in h for h in hits)
+
+
+class _CaptureLLM:
+    """捕获每次发给 LLM 的 messages。"""
+
+    def __init__(self):
+        self.seen = []
+
+    def chat(self, messages, tools=None):
+        self.seen.append(list(messages))
+        return LLMResponse(content="（测试回复）", tool_calls=None)
+
+
+def test_agent_total_budget_shrink():
+    """总预算超限时：先砍检索片段，再收缩窗口，最终上下文 ≤ 预算。"""
+    cap = _CaptureLLM()
+    agent = Agent(
+        llm=cap,
+        registry=ToolRegistry(),
+        memory=ConversationMemory(max_turns=10),
+        max_context_tokens=600,
+        retrieve_budget=100,
+        max_iterations=1,
+    )
+    for i in range(6):
+        agent.run(f"第{i + 1}轮" + "长" * 120)         # 每轮 ≈ 150 token
+    last = cap.seen[-1]
+    total = sum(estimate_tokens(m.get("content") or "") for m in last)
+    assert total <= 600, f"上下文超预算: {total}"
+
+
+def test_tool_result_truncation():
+    """超长工具结果被截断，防止单轮撑爆上下文。"""
+
+    @tool("big_result", "返回超长结果", keywords=["超长"])
+    def big_result() -> str:
+        return "长" * 1000
+
+    registry = ToolRegistry()
+    registry.register(big_result)
+    agent = Agent(
+        llm=MockLLM(registry),
+        registry=registry,
+        memory=ConversationMemory(max_turns=2),
+        tool_result_max_chars=100,
+        max_iterations=1,
+    )
+    r = agent.run("给我超长结果")
+    calls = [t for t in r["trace"] if t["type"] == "tool_call"]
+    assert calls, "Mock 模式应触发 big_result"
+    result = calls[0]["result"]
+    assert len(result) <= 100 + len("…[已截断，结果过长]")
+    assert "已截断" in result

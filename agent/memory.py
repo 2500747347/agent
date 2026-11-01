@@ -9,7 +9,7 @@
 """
 from __future__ import annotations
 
-from agent.history_memory import HistoryMemory
+from agent.history_memory import HistoryMemory, estimate_tokens
 
 
 class ConversationMemory:
@@ -65,27 +65,45 @@ class ConversationMemory:
             return []
         return self._history.retrieve(query, top_k=top_k, token_budget=token_budget)
 
+    def ensure_token_budget(self, budget: int) -> int:
+        """窗口总 token 超预算时，从最旧轮继续整轮裁剪（同样落库）。
+
+        返回收缩后窗口的 token 估算值。至少保留 1 轮。
+        """
+        while self._user_count > 1:
+            total = sum(estimate_tokens(m.get("content") or "") for m in self._messages)
+            if total <= budget:
+                return total
+            self._trim_one()
+        return sum(estimate_tokens(m.get("content") or "") for m in self._messages)
+
     # -- 裁剪 --------------------------------------------------------------
 
     def _trim(self) -> None:
+        """超过 max_turns 时，从最旧轮开始整轮裁剪（落库）。"""
         while self._user_count > self._max_turns:
-            # 找第一个 user 消息，把它及同轮后续消息（直到下一个 user 之前）整轮裁掉，
-            # 避免留下"没有 user 的孤立 assistant"污染上下文
-            idx = None
-            for i, m in enumerate(self._messages):
-                if m.get("role") == "user":
-                    idx = i
-                    break
-            if idx is None:
+            self._trim_one()
+
+    def _trim_one(self) -> None:
+        """无条件裁掉最旧一整轮（user 及其同轮后续消息），落库到历史持久层。
+
+        避免留下"没有 user 的孤立 assistant"污染上下文。
+        """
+        idx = None
+        for i, m in enumerate(self._messages):
+            if m.get("role") == "user":
+                idx = i
                 break
-            end = len(self._messages)
-            for i in range(idx + 1, len(self._messages)):
-                if self._messages[i].get("role") == "user":
-                    end = i
-                    break
-            # 旧消息不丢弃：落库到历史持久层（content 非空的才存）
-            removed = self._messages[idx:end]
-            if self._history is not None:
-                self._history.add_messages(removed)
-            del self._messages[idx:end]
-            self._user_count -= 1
+        if idx is None:
+            return
+        end = len(self._messages)
+        for i in range(idx + 1, len(self._messages)):
+            if self._messages[i].get("role") == "user":
+                end = i
+                break
+        # 旧消息不丢弃：落库到历史持久层（content 非空的才存）
+        removed = self._messages[idx:end]
+        if self._history is not None:
+            self._history.add_messages(removed)
+        del self._messages[idx:end]
+        self._user_count -= 1

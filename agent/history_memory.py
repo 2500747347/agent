@@ -46,8 +46,17 @@ class TfVectorizer:
 
 
 def estimate_tokens(text: str) -> int:
-    """粗略估算 token 数（P0：中文字符≈1 token，直接按字符数；P1 换 tiktoken）。"""
-    return max(1, len(text or ""))
+    """估算 token 数（零依赖启发式）。
+
+    - CJK 字符与全角符号（\\u3000-\\u9fff）：约 1 字符 ≈ 1 token；
+    - ASCII（英文/数字/半角符号）：约 4 字符 ≈ 1 token。
+    对中文对话足够精确；如需 tiktoken 级精度，替换本函数即可。
+    """
+    if not text:
+        return 0
+    cjk = sum(1 for ch in text if "\u3000" <= ch <= "\u9fff")
+    ascii_count = max(0, len(text) - cjk)
+    return max(1, cjk + max(1, ascii_count) // 4)
 
 
 class HistoryMemory:
