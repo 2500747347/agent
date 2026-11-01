@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import json
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable
 
@@ -27,6 +28,7 @@ from agent.llm import (
     LLMRetryableError,
 )
 from agent.memory import ConversationMemory
+from agent.observability import AgentStats, JsonlLogger
 from agent.tools import ToolRegistry
 
 # 上下文总预算（token，启发式估算）：system + 检索 + 窗口 + 当前输入
@@ -58,6 +60,7 @@ class Agent:
         human_confirm: Callable[[str, dict], bool] | None = None,
         repetition_limit: int = _DEFAULT_REPETITION_LIMIT,
         tool_timeout: float = 0,
+        log_dir: str = "logs",
     ):
         self._llm = llm
         self._registry = registry
@@ -74,6 +77,8 @@ class Agent:
         self._repetition_limit = repetition_limit
         # 单轮工具超时（秒）：超过则中断等待并回填提示；0 表示关闭（默认）
         self._tool_timeout = tool_timeout
+        # 可观测性：结构化日志目录（传 None 关闭日志）
+        self._log_dir = log_dir
 
     def _run_tool(self, tool: Any, **kwargs: Any) -> str:
         """执行工具；启用 tool_timeout 时包一层超时，超时不阻塞主循环。
@@ -143,6 +148,15 @@ class Agent:
 
         trace: list[dict] = []
 
+        # ---- 可观测性：计时 / 计数 / 事件收集 ----
+        t0 = time.perf_counter()
+        llm_calls = 0
+        input_tokens_total = 0
+        context_tokens_last = _ctx_tokens(messages)
+        tool_calls = 0
+        tool_errors = 0
+        events: list[dict[str, Any]] = []
+
         # 重复调用检测状态：连续相同 (工具, 参数) 计数
         last_call_key: str | None = None
         repeat_count = 0
@@ -150,14 +164,45 @@ class Agent:
         # 上下文超窗收缩标志：同一轮对话内只收缩一次
         ctx_shrunk = False
 
+        def _finish(
+            answer: str, step: int, terminated_by: str, steps: int | None = None
+        ) -> dict[str, Any]:
+            """统一收口：组装 stats、写结构化日志、返回结果。"""
+            stats = AgentStats(
+                steps=steps if steps is not None else step + 1,
+                terminated_by=terminated_by,
+                llm_calls=llm_calls,
+                tool_calls=tool_calls,
+                tool_errors=tool_errors,
+                input_tokens=input_tokens_total,
+                output_tokens=estimate_tokens(answer),
+                context_tokens=context_tokens_last,
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+            )
+            if self._log_dir:
+                summary = {"event": "summary", "session": "default", **stats.to_dict()}
+                JsonlLogger(self._log_dir).log_many([*events, summary])
+            return {"answer": answer, "trace": trace, "stats": stats.to_dict()}
+
         def llm_fail(msg: str, step: int) -> dict[str, Any]:
             """LLM 调用失败统一兜底：记录 trace、写入记忆、返回可读文本（不崩溃）。"""
             trace.append({"type": "limit", "step": step, "content": msg})
             self._memory.add_user(user_input)
             self._memory.add_assistant(msg)
-            return {"answer": msg, "trace": trace}
+            return _finish(msg, step, "llm_error")
 
         for step in range(self._max_iterations):
+            llm_calls += 1
+            input_tokens_total += _ctx_tokens(messages)
+            context_tokens_last = _ctx_tokens(messages)
+            events.append(
+                {
+                    "event": "llm_call",
+                    "session": "default",
+                    "step": step,
+                    "input_tokens": _ctx_tokens(messages),
+                }
+            )
             try:
                 resp = self._llm.chat(messages, tools=self._registry.schemas())
             except ContextLengthExceeded:
@@ -186,7 +231,7 @@ class Agent:
                 trace.append({"type": "answer", "step": step, "content": answer})
                 self._memory.add_user(user_input)
                 self._memory.add_assistant(answer)
-                return {"answer": answer, "trace": trace}
+                return _finish(answer, step, "answer")
 
             # 情况B：模型发起工具调用 → 记录并逐个执行
             raw_calls = [
@@ -222,6 +267,15 @@ class Agent:
                         f"连续 {repeat_count} 次，判定陷入循环，已提前终止。"
                     )
                     loop_detected = result
+                    events.append(
+                        {
+                            "event": "loop_detected",
+                            "session": "default",
+                            "step": step,
+                            "name": tc.name,
+                            "arguments": tc.arguments,
+                        }
+                    )
                     messages.append(
                         {"role": "tool", "content": result, "tool_call_id": tc.id, "name": tc.name}
                     )
@@ -236,6 +290,7 @@ class Agent:
                     )
                     break
 
+                tool_calls += 1
                 tool = self._registry.get(tc.name)
                 if tool is None:
                     result = f"[错误] 未知工具：{tc.name}"
@@ -255,6 +310,22 @@ class Agent:
                     result = self._run_tool(tool, **tc.arguments)
                 if len(result) > self._tool_result_max_chars:
                     result = result[: self._tool_result_max_chars] + "…[已截断，结果过长]"
+                ok = not result.startswith(
+                    ("[工具执行错误]", "[参数校验失败]", "[工具超时]")
+                )
+                if not ok:
+                    tool_errors += 1
+                events.append(
+                    {
+                        "event": "tool_call",
+                        "session": "default",
+                        "step": step,
+                        "name": tc.name,
+                        "arguments": tc.arguments,
+                        "result_len": len(result),
+                        "ok": ok,
+                    }
+                )
                 messages.append(
                     {"role": "tool", "content": result, "tool_call_id": tc.id, "name": tc.name}
                 )
@@ -276,9 +347,12 @@ class Agent:
             fallback = (
                 f"（检测到重复工具调用，已提前终止，避免死循环。）\n{loop_detected}"
             )
+            terminated_by = "loop_detected"
         else:
             fallback = "（已达到最大推理轮次，请简化问题或稍后再试。）"
+            terminated_by = "limit"
         trace.append({"type": "limit", "step": self._max_iterations, "content": fallback})
         self._memory.add_user(user_input)
         self._memory.add_assistant(fallback)
-        return {"answer": fallback, "trace": trace}
+        steps = step + 1 if loop_detected else self._max_iterations
+        return _finish(fallback, self._max_iterations, terminated_by, steps=steps)
