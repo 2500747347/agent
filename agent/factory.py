@@ -22,7 +22,7 @@ from agent.tools import ToolRegistry
 
 _CONFIG_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "config"))
 
-# 系统提示词：引导工具使用策略（面试可讲：通过提示词优化评测指标）
+# 系统提示词：引导工具使用策略
 _SYSTEM_PROMPT = (
     "你是“个人AI助理”，一个可靠的智能体助手。\n"
     "使用原则：\n"
