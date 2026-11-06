@@ -6,6 +6,12 @@
 
 ---
 
+## 界面预览
+
+![交互界面：左侧对话、右侧工具调用轨迹](docs/images/ui-preview.png)
+
+> 左侧对话区渲染回答，右侧同步展示每一轮的工具名、参数与返回值；顶部状态卡显示当前运行模式（真实模型 / Mock 离线演练）。
+
 ## 特性一览
 
 - **手写 Agent 内核**：ReAct 推理循环 + 原生 Function Calling 工具调度，无 LangChain/LangGraph 依赖
