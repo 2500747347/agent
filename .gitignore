@@ -36,3 +36,6 @@ Thumbs.db
 docs/_tmp_resume/
 docs/*.pdf
 
+# ===== 爬虫学习脚手架（练习代码，不入库）=====
+爬虫学习/
+
