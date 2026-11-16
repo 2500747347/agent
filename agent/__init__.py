@@ -1,4 +1,4 @@
-"""个人AI助理 Agent —— 核心包。
+"""ReAct Agent Runtime —— 核心包。
 
 模块一览：
 - llm.py   : LLM 统一封装（OpenAI 兼容接口 + Mock 模式）

@@ -72,7 +72,7 @@ def run_case(agent, case: dict) -> dict:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="个人AI助理Agent 评测")
+    parser = argparse.ArgumentParser(description="ReAct Agent Runtime 评测")
     parser.add_argument("--no-clean", action="store_true", help="评测前不清空数据表")
     parser.add_argument(
         "--real", action="store_true",

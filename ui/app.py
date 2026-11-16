@@ -1,4 +1,4 @@
-"""个人AI助理 Agent —— Gradio 对话界面。
+"""ReAct Agent Runtime —— Gradio 运行界面。
 
 启动： python ui/app.py  （默认 http://127.0.0.1:7860）
 功能：多轮对话、工具调用过程实时展示、重置会话。
@@ -53,9 +53,9 @@ _PROVIDER_CLASS = "badge-online" if _PROVIDER != "mock" else "badge-offline"
 HERO_HTML = f"""
 <div class="hero">
   <div class="hero-main">
-    <div class="hero-eyebrow">PERSONAL AI ASSISTANT / REACT CORE</div>
-    <h1>个人 AI 助理 Agent</h1>
-    <p class="hero-sub">从零手写的 ReAct 推理内核 —— 工具调度、双记忆、RAG 检索、全程可观测</p>
+    <div class="hero-eyebrow">AGENT RUNTIME / HARNESS ENGINEERING</div>
+    <h1>ReAct Agent Runtime</h1>
+    <p class="hero-sub">从零实现的 ReAct 推理内核 —— 工具契约、上下文预算、分层记忆、失败兜底</p>
     <div class="hero-chips">
       <span class="chip">{_TOOL_COUNT} 个工具</span>
       <span class="chip">SQLite 持久化</span>
@@ -66,7 +66,7 @@ HERO_HTML = f"""
   <div class="hero-status">
     <div class="status-line"><span class="dot {_PROVIDER_CLASS}"></span>{_PROVIDER_TEXT}</div>
     <div class="status-model">{_MODEL_LABEL}</div>
-    <div class="status-note">会话内自动记忆 · 工具调用可见</div>
+    <div class="status-note">每步工具决策可见 · 全程可观测</div>
   </div>
 </div>
 """
@@ -420,7 +420,7 @@ def reset_session() -> tuple:
 
 
 def main() -> None:
-    with gr.Blocks(title="个人AI助理 Agent") as demo:
+    with gr.Blocks(title="ReAct Agent Runtime") as demo:
         gr.HTML(HERO_HTML)
 
         with gr.Row(equal_height=True):

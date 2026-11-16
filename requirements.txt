@@ -1,4 +1,4 @@
-# ===== 个人AI助理Agent 依赖清单 =====
+# ===== ReAct Agent Runtime 依赖清单 =====
 # 核心：LLM 接入（OpenAI 兼容接口，可接 Codex / GPT / DeepSeek / 通义等）
 openai>=1.40.0
 # 配置管理
